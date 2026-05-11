@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d6efd">
+<title>Scores Famille</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8E%B2%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="topbar-inner">
+    <h1>🎲 Scores</h1>
+    <nav id="tabs"></nav>
+    <div id="userbox"></div>
+  </div>
+  <div id="syncbar"></div>
+</header>
+
+<main id="screen"></main>
+
+<!-- Templates -->
+<template id="tpl-welcome">
+  <section class="welcome card">
+    <h2>Bienvenue</h2>
+    <p>App de scores pour jeux de société, synchronisée via Google Drive.</p>
+    <div class="form-row">
+      <label>Google OAuth Client ID
+        <input id="cfg-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
+      </label>
+      <small>Créé dans Google Cloud Console (voir README).</small>
+    </div>
+    <button id="btn-save-cfg" class="primary">Enregistrer</button>
+    <button id="btn-signin" class="primary" hidden>Se connecter avec Google</button>
+    <div id="setup-actions" hidden>
+      <h3>Base de données</h3>
+      <p>Aucune base trouvée. Choisis :</p>
+      <button id="btn-create-db">Créer une nouvelle base</button>
+      <button id="btn-pick-db">Sélectionner une base partagée (Picker)</button>
+      <button id="btn-create-db-seed">Créer + importer l'ancien Sheet (54 parties)</button>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-home">
+  <section class="home">
+    <button id="btn-new-match" class="primary big">+ Nouvelle partie</button>
+    <h2>Parties en cours</h2>
+    <div id="ongoing-list" class="cards"></div>
+    <h2>Dernières parties</h2>
+    <div id="recent-list" class="cards"></div>
+  </section>
+</template>
+
+<template id="tpl-new-match">
+  <section class="new-match card">
+    <h2>Nouvelle partie</h2>
+    <div class="form-row">
+      <label>Jeu
+        <select id="nm-game"></select>
+      </label>
+    </div>
+    <div id="nm-game-config"></div>
+    <div class="form-row">
+      <label>Joueurs (min 2)</label>
+      <div id="nm-players" class="chip-grid"></div>
+    </div>
+    <div class="form-actions">
+      <button id="nm-cancel">Annuler</button>
+      <button id="nm-start" class="primary">Démarrer</button>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-match">
+  <section class="match">
+    <header class="match-head card">
+      <div>
+        <h2 id="m-title"></h2>
+        <small id="m-meta"></small>
+      </div>
+      <div class="match-actions">
+        <button id="m-end-manual" hidden>Terminer la partie</button>
+        <button id="m-back">←</button>
+      </div>
+    </header>
+    <div id="m-totals" class="totals"></div>
+    <div id="m-rounds" class="rounds"></div>
+    <div id="m-entry" class="entry-area"></div>
+    <div id="m-winner" hidden></div>
+  </section>
+</template>
+
+<template id="tpl-players">
+  <section class="players card">
+    <h2>Joueurs</h2>
+    <div id="players-list"></div>
+    <div class="form-row">
+      <input id="new-player-name" placeholder="Nouveau joueur">
+      <button id="add-player" class="primary">Ajouter</button>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-games">
+  <section class="games card">
+    <h2>Jeux</h2>
+    <div id="games-list"></div>
+    <hr>
+    <h3>Ajouter un jeu</h3>
+    <div class="form-row">
+      <label>Nom <input id="ng-name"></label>
+      <label>Sens
+        <select id="ng-dir">
+          <option value="low">Bas gagne</option>
+          <option value="high">Haut gagne</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Fin de partie
+        <select id="ng-endtype">
+          <option value="threshold">Seuil atteint</option>
+          <option value="rounds">Nb de manches fixe</option>
+          <option value="manual">Déclaration manuelle</option>
+        </select>
+      </label>
+      <label id="ng-val-wrap">Valeur <input id="ng-val" type="number"></label>
+    </div>
+    <button id="add-game" class="primary">Ajouter ce jeu</button>
+  </section>
+</template>
+
+<template id="tpl-stats">
+  <section class="stats">
+    <div class="filters card">
+      <label>Jeu
+        <select id="f-game"><option value="">Tous</option></select>
+      </label>
+      <label>Période
+        <select id="f-period">
+          <option value="all">Tout</option>
+          <option value="30">30 derniers jours</option>
+          <option value="90">90 derniers jours</option>
+          <option value="365">1 an</option>
+        </select>
+      </label>
+    </div>
+    <div id="stats-content"></div>
+  </section>
+</template>
+
+<template id="tpl-history">
+  <section class="history">
+    <div class="filters card">
+      <label>Jeu
+        <select id="h-game"><option value="">Tous</option></select>
+      </label>
+    </div>
+    <div id="history-list" class="cards"></div>
+  </section>
+</template>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
