@@ -166,11 +166,17 @@
 <template id="tpl-history">
   <section class="history">
     <div class="filters card">
-      <label>Jeu
-        <select id="h-game"><option value="">Tous</option></select>
-      </label>
+      <div class="filter-row">
+        <label>Jeu
+          <select id="h-game"><option value="">Tous</option></select>
+        </label>
+        <label>Joueur
+          <select id="h-player"><option value="">Tous</option></select>
+        </label>
+      </div>
+      <div id="h-mode" class="chip-grid" style="margin-top:8px;"></div>
     </div>
-    <div id="history-list" class="cards"></div>
+    <div id="history-content"></div>
   </section>
 </template>
 
