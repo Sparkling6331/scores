@@ -1207,18 +1207,213 @@ function drawEvoSvg(series) {
 function renderHistory(screen) {
   const v = tpl('tpl-history');
   screen.appendChild(v);
+
   const gameSel = v.querySelector('#h-game');
   for (const g of state.db.games) gameSel.appendChild(el('option', { value: g.id }, g.name));
+
+  const playerSel = v.querySelector('#h-player');
+  for (const p of state.db.players) playerSel.appendChild(el('option', { value: p.id }, p.name));
+
   const players = Object.fromEntries(state.db.players.map(p => [p.id, p]));
   const games = Object.fromEntries(state.db.games.map(g => [g.id, g]));
-  const list = v.querySelector('#history-list');
-  function refresh() {
-    list.innerHTML = '';
+  const content = v.querySelector('#history-content');
+
+  const MODES = [
+    { id: 'list', label: 'Parties' },
+    { id: 'tour-records', label: 'Records par tour' },
+    { id: 'match-records', label: 'Records de partie' },
+    { id: 'extremes', label: 'Serrées / Longues' },
+  ];
+  let currentMode = 'list';
+  const modeChips = {};
+  const modeGrid = v.querySelector('#h-mode');
+  for (const m of MODES) {
+    const chip = el('span', { class: 'chip' + (m.id === 'list' ? ' on' : ''), onclick: () => {
+      currentMode = m.id;
+      Object.values(modeChips).forEach(c => c.classList.remove('on'));
+      chip.classList.add('on');
+      refresh();
+    }}, m.label);
+    modeChips[m.id] = chip;
+    modeGrid.appendChild(chip);
+  }
+
+  function getFiltered() {
     let arr = state.db.matches.filter(m => m.status === 'finished');
     if (gameSel.value) arr = arr.filter(m => m.gameId === gameSel.value);
-    arr.sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || ''));
-    if (!arr.length) list.appendChild(el('div', {}, 'Aucune partie.'));
-    for (const m of arr) list.appendChild(matchCard(m, games, players));
+    if (playerSel.value) arr = arr.filter(m => m.playerIds.includes(playerSel.value));
+    return arr;
   }
-  gameSel.onchange = refresh; refresh();
+
+  function refresh() {
+    content.innerHTML = '';
+    const arr = getFiltered();
+    if (currentMode === 'list') renderHistoryList(content, arr, games, players);
+    else if (currentMode === 'tour-records') renderTourRecords(content, arr, games, players);
+    else if (currentMode === 'match-records') renderMatchRecords(content, arr, games, players);
+    else if (currentMode === 'extremes') renderExtremes(content, arr, games, players);
+  }
+
+  gameSel.onchange = refresh;
+  playerSel.onchange = refresh;
+  refresh();
+}
+
+function renderHistoryList(host, arr, games, players) {
+  const list = el('div', { class: 'cards' });
+  arr.sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || ''));
+  if (!arr.length) list.appendChild(el('div', { style: 'color:var(--muted); padding:8px;' }, 'Aucune partie.'));
+  for (const m of arr) list.appendChild(matchCard(m, games, players));
+  host.appendChild(list);
+}
+
+function renderTourRecords(host, matches, games, players) {
+  const entries = [];
+  for (const m of matches) {
+    const game = games[m.gameId]; if (!game) continue;
+    for (const r of m.rounds) {
+      for (const [pid, score] of Object.entries(r.scores)) {
+        if (score == null) continue;
+        entries.push({ matchId: m.id, gameName: game.name, pid, score: Number(score), roundN: r.n, date: m.endedAt || m.startedAt });
+      }
+    }
+  }
+  if (!entries.length) {
+    host.appendChild(el('div', { class: 'card' }, 'Aucun score de tour disponible.'));
+    return;
+  }
+
+  const byScore = [...entries].sort((a, b) => b.score - a.score);
+  const highest = byScore.slice(0, 10);
+  const lowest = byScore.slice(-10).reverse();
+
+  const multiGame = new Set(matches.map(m => m.gameId)).size > 1;
+  if (multiGame) {
+    host.appendChild(el('div', { class: 'card', style: 'font-size:13px; color:var(--muted);' },
+      'ℹ️ Filtrer par jeu rend la comparaison plus pertinente (scores hétérogènes entre jeux).'
+    ));
+  }
+
+  const mkTable = (rows, title) => {
+    const t = el('table', { class: 'stat' });
+    t.appendChild(el('thead', {}, el('tr', {},
+      el('th', {}, '#'), el('th', {}, 'Joueur'), el('th', {}, 'Score'),
+      el('th', {}, 'Tour'), el('th', {}, 'Jeu'), el('th', {}, 'Date')
+    )));
+    const tb = el('tbody');
+    rows.forEach((e, i) => {
+      const tr = el('tr', { class: 'record-row', onclick: () => goto('match', { matchId: e.matchId }) },
+        el('td', {}, String(i + 1)),
+        el('td', {}, players[e.pid]?.name || '?'),
+        el('td', { style: 'font-weight:700;' }, String(e.score)),
+        el('td', {}, `#${e.roundN}`),
+        el('td', {}, e.gameName),
+        el('td', {}, fmtDate(e.date))
+      );
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    return el('div', { class: 'card' }, el('h3', {}, title), t);
+  };
+
+  host.appendChild(mkTable(highest, '🔝 10 scores les plus élevés au tour'));
+  host.appendChild(mkTable(lowest, '🔻 10 scores les plus faibles au tour'));
+}
+
+function renderMatchRecords(host, matches, games, players) {
+  if (!matches.length) {
+    host.appendChild(el('div', { class: 'card' }, 'Aucune partie terminée.'));
+    return;
+  }
+
+  const byGame = {};
+  for (const m of matches) {
+    const game = games[m.gameId]; if (!game) continue;
+    if (!byGame[m.gameId]) byGame[m.gameId] = { game, entries: [] };
+    const totals = stats.totalsOfMatch(m);
+    for (const [pid, total] of Object.entries(totals)) {
+      byGame[m.gameId].entries.push({ matchId: m.id, pid, total, date: m.endedAt || m.startedAt });
+    }
+  }
+
+  for (const { game, entries } of Object.values(byGame)) {
+    const sorted = [...entries].sort((a, b) =>
+      game.scoreDir === 'low' ? a.total - b.total : b.total - a.total
+    );
+    const best5 = sorted.slice(0, 5);
+    const worst5 = sorted.slice(-5).reverse();
+    const dir = game.scoreDir === 'low' ? '(bas gagne)' : '(haut gagne)';
+
+    const mkRows = rows => rows.map((e, i) =>
+      el('tr', { class: 'record-row', onclick: () => goto('match', { matchId: e.matchId }) },
+        el('td', {}, String(i + 1)),
+        el('td', {}, players[e.pid]?.name || '?'),
+        el('td', { style: 'font-weight:700;' }, String(e.total)),
+        el('td', {}, fmtDate(e.date))
+      )
+    );
+
+    const mkTable = (rows, title) => {
+      const t = el('table', { class: 'stat' });
+      t.appendChild(el('thead', {}, el('tr', {}, el('th', {}, '#'), el('th', {}, 'Joueur'), el('th', {}, 'Total'), el('th', {}, 'Date'))));
+      const tb = el('tbody');
+      mkRows(rows).forEach(r => tb.appendChild(r));
+      t.appendChild(tb);
+      return el('div', { style: 'margin-top:12px;' }, el('h4', { style: 'margin:0 0 6px;' }, title), t);
+    };
+
+    host.appendChild(el('div', { class: 'card' },
+      el('h3', { style: 'margin-top:0;' }, `🎯 ${game.name} ${dir}`),
+      mkTable(best5, '🏆 Meilleurs totaux'),
+      mkTable(worst5, '📉 Pires totaux')
+    ));
+  }
+}
+
+function renderExtremes(host, matches, games, players) {
+  if (!matches.length) {
+    host.appendChild(el('div', { class: 'card' }, 'Aucune partie terminée.'));
+    return;
+  }
+
+  // Longest by round count
+  const withRounds = matches
+    .filter(m => m.rounds.length > 0)
+    .map(m => ({ m, rounds: m.rounds.length }))
+    .sort((a, b) => b.rounds - a.rounds)
+    .slice(0, 8);
+
+  // Tightest: smallest gap between best and worst total
+  const withGap = matches.map(m => {
+    const totals = Object.values(stats.totalsOfMatch(m));
+    if (totals.length < 2) return null;
+    const gap = Math.max(...totals) - Math.min(...totals);
+    return { m, gap };
+  }).filter(Boolean).sort((a, b) => a.gap - b.gap).slice(0, 8);
+
+  const mkCard = (title, rows) => {
+    const list = el('div', { class: 'cards' });
+    for (const row of rows) list.appendChild(row);
+    return el('div', { class: 'card' }, el('h3', { style: 'margin-top:0;' }, title), list);
+  };
+
+  const longRows = withRounds.map(({ m, rounds }) => {
+    const c = matchCard(m, games, players, { deletable: false });
+    c.querySelector('.meta')?.insertAdjacentText('beforebegin', `${rounds} tours · `);
+    return c;
+  });
+
+  const tightRows = withGap.map(({ m, gap }) => {
+    const c = matchCard(m, games, players, { deletable: false });
+    c.querySelector('.meta')?.insertAdjacentText('beforebegin', `Écart: ${gap} pts · `);
+    return c;
+  });
+
+  host.appendChild(mkCard('📏 Parties les plus longues (nb de tours)', longRows.length ? longRows : [el('div', {}, 'Aucune donnée.')]));
+  host.appendChild(mkCard('🤏 Parties les plus serrées (écart final)', tightRows.length ? tightRows : [el('div', {}, 'Aucune donnée.')]));
+}
+
+// ---------- Service Worker ----------
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
 }

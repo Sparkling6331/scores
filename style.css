@@ -193,6 +193,13 @@ table.stat tbody tr:hover { background: var(--bg); }
 
 .h2h-grid { overflow-x: auto; }
 
+/* History filters */
+.filter-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+
+/* History record rows */
+tr.record-row { cursor: pointer; }
+tr.record-row:hover { background: var(--bg); }
+
 /* History */
 .match-card { cursor: pointer; }
 .match-card:hover { border-color: var(--accent); }
