@@ -58,10 +58,24 @@ const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 const fmtDate = iso => { const d = new Date(iso); return d.toLocaleDateString('fr-FR'); };
 const fmtDateTime = iso => { const d = new Date(iso); return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }); };
 
+let lastSyncTime = null;
+let syncbarFadeTimer = null;
 function syncbar(state_, msg) {
   const b = $('#syncbar');
   b.className = state_ || '';
-  b.textContent = msg || '';
+  if (state_ === 'ok') {
+    lastSyncTime = new Date();
+    const hhmm = lastSyncTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    b.textContent = (msg || 'Synchronisé') + ' à ' + hhmm;
+    if (syncbarFadeTimer) clearTimeout(syncbarFadeTimer);
+    syncbarFadeTimer = setTimeout(() => {
+      if (b.className === 'ok') { b.className = ''; b.textContent = 'Dernière sync : ' + hhmm; }
+    }, 5000);
+  } else if (state_ === 'error') {
+    b.textContent = '⚠️ Problème de synchronisation — vérifie ta connexion internet.';
+  } else {
+    b.textContent = msg || '';
+  }
 }
 
 // ---------- DB merge (conflict resolution) ----------
@@ -342,11 +356,21 @@ function renderHome(screen) {
     .slice(0, 6);
 
   const oList = v.querySelector('#ongoing-list');
-  if (!ongoing.length) oList.appendChild(el('div', { class: 'muted' }, 'Aucune.'));
+  if (!ongoing.length) {
+    if (!state.db.matches.length) {
+      oList.appendChild(el('div', { class: 'card', style: 'text-align:center; padding:24px;' },
+        el('div', { style: 'font-size:40px; margin-bottom:8px;' }, '🎲'),
+        el('p', { style: 'margin:0 0 4px; font-weight:600;' }, 'Aucune partie en cours'),
+        el('p', { style: 'margin:0; font-size:14px; color:var(--muted);' }, 'Clique sur "+ Nouvelle partie" pour commencer !')
+      ));
+    } else {
+      oList.appendChild(el('div', { class: 'muted', style: 'padding:8px;' }, 'Aucune partie en cours.'));
+    }
+  }
   for (const m of ongoing) oList.appendChild(matchCard(m, games, players));
 
   const rList = v.querySelector('#recent-list');
-  if (!recent.length) rList.appendChild(el('div', { class: 'muted' }, 'Aucune.'));
+  if (!recent.length) rList.appendChild(el('div', { class: 'muted', style: 'padding:8px;' }, 'Aucune partie terminée récemment.'));
   for (const m of recent) rList.appendChild(matchCard(m, games, players));
 }
 
@@ -371,6 +395,10 @@ function matchCard(m, games, players, opts = {}) {
     right,
   );
   c.appendChild(top);
+  if (m.status === 'finished' && winners.length) {
+    const winNames = winners.map(pid => players[pid]?.name || '?').join(' & ');
+    c.appendChild(el('div', { class: 'match-winner-line' }, '🏆 ', el('strong', {}, winNames)));
+  }
   const sc = el('div', { class: 'scores' });
   for (const pid of m.playerIds) {
     const name = players[pid]?.name || '?';
@@ -417,16 +445,35 @@ function renderNewMatch(screen) {
   renderGameConfig();
 
   const pls = v.querySelector('#nm-players');
+  const playerCountHint = el('div', {
+    style: 'font-size:13px; margin-bottom:4px; color:var(--warn);',
+  }, '0 joueur sélectionné — minimum 2');
+  pls.parentElement.insertBefore(playerCountHint, pls);
+  const updatePlayerCountHint = () => {
+    const count = state.newMatch.playerIds.length;
+    if (count === 0) {
+      playerCountHint.textContent = '0 joueur sélectionné — minimum 2';
+      playerCountHint.style.color = 'var(--warn)';
+    } else if (count === 1) {
+      playerCountHint.textContent = '1 joueur sélectionné — il en faut au moins 2';
+      playerCountHint.style.color = 'var(--warn)';
+    } else {
+      playerCountHint.textContent = `${count} joueurs sélectionnés ✓`;
+      playerCountHint.style.color = 'var(--good)';
+    }
+  };
   for (const p of state.db.players) {
     const c = el('span', { class: 'chip', onclick: () => {
       const i = state.newMatch.playerIds.indexOf(p.id);
       if (i >= 0) state.newMatch.playerIds.splice(i, 1);
       else state.newMatch.playerIds.push(p.id);
       c.classList.toggle('on');
+      updatePlayerCountHint();
     }}, p.name);
     if (state.newMatch.playerIds.includes(p.id)) c.classList.add('on');
     pls.appendChild(c);
   }
+  updatePlayerCountHint();
   v.querySelector('#nm-cancel').onclick = () => goto('home');
   v.querySelector('#nm-start').onclick = () => {
     if (state.newMatch.playerIds.length < 2) return alert('Sélectionne au moins 2 joueurs.');
@@ -454,7 +501,13 @@ function renderNewMatch(screen) {
 
 // ---------- Match screen ----------
 let lockRefreshTimer = null;
-function clearLockRefresh() { if (lockRefreshTimer) clearInterval(lockRefreshTimer); lockRefreshTimer = null; }
+let lockCountdownTimer = null;
+function clearLockRefresh() {
+  if (lockRefreshTimer) clearInterval(lockRefreshTimer);
+  lockRefreshTimer = null;
+  if (lockCountdownTimer) clearInterval(lockCountdownTimer);
+  lockCountdownTimer = null;
+}
 
 function deleteMatch(matchId) {
   const m = state.db.matches.find(x => x.id === matchId);
@@ -636,14 +689,25 @@ function renderEntry(host, m, game, n, players) {
   const otherActive = lock && lock.deviceId !== DEVICE_ID && new Date(lock.expiresAt).getTime() > Date.now();
 
   if (otherActive) {
-    const secs = Math.max(0, Math.round((new Date(lock.expiresAt).getTime() - Date.now()) / 1000));
-    host.appendChild(el('div', { class: 'lock-info' },
-      `🔒 ${lock.name || 'Un autre joueur'} saisit le tour #${n} (libère dans ${secs}s)`));
+    const lockDiv = el('div', { class: 'lock-info' });
+    const forceBtn = el('button', { class: 'danger', style: 'display:none;', onclick: () => { releaseLock(m.id, n); claimLock(m.id, n); } }, 'Forcer la libération');
+    host.appendChild(lockDiv);
     host.appendChild(el('button', { onclick: () => render() }, 'Rafraîchir'));
-    if (secs <= 0) {
-      const force = el('button', { class: 'danger', onclick: () => { releaseLock(m.id, n); claimLock(m.id, n); } }, 'Forcer la libération');
-      host.appendChild(force);
-    }
+    host.appendChild(forceBtn);
+    const expiresAt = new Date(lock.expiresAt).getTime();
+    const updateCountdown = () => {
+      const secs = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      lockDiv.textContent = `🔒 ${lock.name || 'Un autre joueur'} saisit le tour #${n} (libère dans ${secs}s)`;
+      if (secs <= 0) {
+        lockDiv.textContent = `🔒 ${lock.name || 'Un autre joueur'} — verrouillage expiré`;
+        forceBtn.style.display = '';
+        clearInterval(lockCountdownTimer);
+        lockCountdownTimer = null;
+      }
+    };
+    updateCountdown();
+    if (lockCountdownTimer) clearInterval(lockCountdownTimer);
+    lockCountdownTimer = setInterval(updateCountdown, 1000);
     return;
   }
 
@@ -653,6 +717,7 @@ function renderEntry(host, m, game, n, players) {
   }
 
   // I have the lock — show entry form
+  const warnEl = el('div', { class: 'entry-warn', style: 'display:none;' });
   host.appendChild(el('div', { class: 'card' },
     el('h3', {}, `Tour #${n}`),
     ...m.playerIds.map(pid => {
@@ -660,9 +725,11 @@ function renderEntry(host, m, game, n, players) {
       row.appendChild(el('label', {}, players[pid]?.name || '?'));
       const inp = el('input', { type: 'number', inputmode: 'numeric', step: '1', placeholder: '0', 'data-pid': pid });
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') host.querySelector('#submit-round').click(); });
+      inp.addEventListener('input', () => { inp.classList.remove('warn-empty'); warnEl.style.display = 'none'; });
       row.appendChild(inp);
       return row;
     }),
+    warnEl,
     el('div', { class: 'form-actions' },
       el('button', { onclick: () => { releaseLock(m.id, n); render(); } }, 'Annuler'),
       el('button', {
@@ -678,13 +745,26 @@ function renderEntry(host, m, game, n, players) {
 function submitRound(matchId, n, host) {
   const inputs = host.querySelectorAll('input[data-pid]');
   const scores = {};
+  const blanks = [];
   for (const inp of inputs) {
     const pid = inp.dataset.pid;
     const raw = inp.value.trim();
-    if (raw === '') continue; // skip empties
+    if (raw === '') { blanks.push(inp); continue; }
     const num = Number(raw);
     if (!isFinite(num)) return alert('Score invalide pour un joueur.');
     scores[pid] = num;
+  }
+  if (blanks.length) {
+    const warnEl = host.querySelector('.entry-warn');
+    blanks.forEach(inp => inp.classList.add('warn-empty'));
+    if (warnEl) {
+      warnEl.textContent = `⚠️ ${blanks.length} score(s) non renseigné(s). Remplis les champs manquants ou clique à nouveau pour valider quand même.`;
+      warnEl.style.display = '';
+    }
+    // On second click allow submit anyway (blanks already highlighted)
+    const btn = host.querySelector('#submit-round');
+    if (btn && !btn.dataset.forceSubmit) { btn.dataset.forceSubmit = '1'; return; }
+    if (btn) delete btn.dataset.forceSubmit;
   }
   const m = state.db.matches.find(x => x.id === matchId);
   if (!m) return;
@@ -743,6 +823,11 @@ function renderPlayers(screen) {
   const v = tpl('tpl-players');
   screen.appendChild(v);
   const list = v.querySelector('#players-list');
+  if (!state.db.players.length) {
+    list.appendChild(el('div', { class: 'card', style: 'text-align:center; padding:16px; color:var(--muted);' },
+      el('p', { style: 'margin:0;' }, '👥 Aucun joueur encore. Saisis les prénoms de la famille ci-dessous !')
+    ));
+  }
   for (const p of state.db.players) {
     const row = el('div', { class: 'row' });
     row.appendChild(el('span', { class: 'nm' }, p.name));
@@ -1051,12 +1136,15 @@ function drawStats(host, filt) {
 
   // Evolution chart for top 3 players
   const top = rows.slice(0, 3);
-  if (top.length && filt.gameId) {
+  if (top.length) {
+    const title = filt.gameId ? 'Évolution des totaux' : 'Évolution des totaux (top 3 joueurs)';
+    const subtitle = filt.gameId ? null : el('small', { style: 'display:block; margin-bottom:8px; color:var(--muted);' },
+      'Filtrer par jeu pour voir l\'évolution sur un seul jeu.');
     const svg = drawEvoSvg(top.map(r => ({
       pid: r.pid, name: players[r.pid]?.name || '?',
       points: stats.evolution(state.db, r.pid, filt),
     })));
-    host.appendChild(el('div', { class: 'card' }, el('h3', {}, 'Évolution des totaux'), svg));
+    host.appendChild(el('div', { class: 'card' }, el('h3', {}, title), subtitle, svg));
   }
 }
 

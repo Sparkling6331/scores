@@ -59,6 +59,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   font-size: 12px; color: var(--muted); padding: 4px 12px;
   text-align: center; min-height: 22px;
   max-width: 980px; margin: 0 auto;
+  transition: color 0.5s;
 }
 #syncbar.error { color: var(--bad); }
 #syncbar.ok { color: var(--good); }
@@ -201,6 +202,13 @@ table.stat tbody tr:hover { background: var(--bg); }
 .match-card .scores { margin-top: 6px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
 .match-card .scores span { background: var(--bg); border-radius: 6px; padding: 2px 8px; }
 .match-card .scores span.win { background: var(--good); color: white; font-weight: 600; }
+.match-card .match-winner-line { font-size: 14px; margin-top: 4px; color: var(--good); }
+.match-card .match-winner-line strong { font-weight: 700; }
+
+/* Score entry validation */
+input.warn-empty { border-color: var(--warn) !important; outline: 2px solid var(--warn); outline-offset: -1px; }
+.entry-warn { background: #fff3cd; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 4px; }
+@media (prefers-color-scheme: dark) { .entry-warn { background: #3b2800; color: #fbbf24; } }
 
 .evo { width: 100%; height: 220px; }
 .evo line.axis { stroke: var(--border); }
