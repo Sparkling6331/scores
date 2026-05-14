@@ -1222,3 +1222,8 @@ function renderHistory(screen) {
   }
   gameSel.onchange = refresh; refresh();
 }
+
+// ---------- Service Worker ----------
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
