@@ -152,9 +152,11 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 .rounds th:first-child, .rounds td:first-child { text-align: left; color: var(--muted); }
 
 .entry-area .card { margin: 0; }
-.entry-row { display: grid; gap: 6px; margin-bottom: 8px; grid-template-columns: 1fr 100px; align-items: center; }
+.entry-row { display: grid; gap: 6px; margin-bottom: 8px; grid-template-columns: 1fr auto; align-items: center; }
 .entry-row label { margin: 0; font-size: 14px; color: var(--text); }
-.entry-row input { text-align: right; }
+.entry-input-wrap { display: flex; gap: 4px; align-items: center; }
+.entry-input-wrap input { width: 90px; text-align: right; }
+.sign-toggle { padding: 0 10px; min-height: var(--tap); font-size: 15px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); cursor: pointer; flex-shrink: 0; }
 .lock-info {
   padding: 8px; background: var(--bg); border-radius: 8px;
   font-size: 14px; color: var(--warn); margin-bottom: 8px;

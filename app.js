@@ -723,10 +723,19 @@ function renderEntry(host, m, game, n, players) {
     ...m.playerIds.map(pid => {
       const row = el('div', { class: 'entry-row' });
       row.appendChild(el('label', {}, players[pid]?.name || '?'));
-      const inp = el('input', { type: 'number', inputmode: 'numeric', step: '1', placeholder: '0', 'data-pid': pid });
+      const inp = el('input', { type: 'number', inputmode: 'decimal', step: '1', placeholder: '0', 'data-pid': pid });
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') host.querySelector('#submit-round').click(); });
       inp.addEventListener('input', () => { inp.classList.remove('warn-empty'); warnEl.style.display = 'none'; });
-      row.appendChild(inp);
+      const toggle = el('button', { class: 'sign-toggle', type: 'button', title: 'Inverser le signe', onclick: () => {
+        const v = parseFloat(inp.value);
+        if (!isNaN(v)) { inp.value = String(-v); inp.dispatchEvent(new Event('input')); }
+        else inp.value = '-';
+        inp.focus();
+      }}, '+/−');
+      const wrap = el('div', { class: 'entry-input-wrap' });
+      wrap.appendChild(inp);
+      wrap.appendChild(toggle);
+      row.appendChild(wrap);
       return row;
     }),
     warnEl,
