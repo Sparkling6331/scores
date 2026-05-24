@@ -1276,7 +1276,7 @@ function renderHistory(screen) {
     const filteredPlayerId = playerSel.value || null;
     if (currentMode === 'list') renderHistoryList(content, arr, games, players);
     else if (currentMode === 'tour-records') renderTourRecords(content, arr, games, players, filteredPlayerId);
-    else if (currentMode === 'match-records') renderMatchRecords(content, arr, games, players);
+    else if (currentMode === 'match-records') renderMatchRecords(content, arr, games, players, filteredPlayerId);
     else if (currentMode === 'extremes') renderExtremes(content, arr, games, players);
   }
 
@@ -1347,7 +1347,7 @@ function renderTourRecords(host, matches, games, players, filterPlayerId = null)
   host.appendChild(mkTable(lowest, '🔻 10 scores les plus faibles au tour'));
 }
 
-function renderMatchRecords(host, matches, games, players) {
+function renderMatchRecords(host, matches, games, players, filterPlayerId = null) {
   if (!matches.length) {
     host.appendChild(el('div', { class: 'card' }, 'Aucune partie terminée.'));
     return;
@@ -1359,6 +1359,7 @@ function renderMatchRecords(host, matches, games, players) {
     if (!byGame[m.gameId]) byGame[m.gameId] = { game, entries: [] };
     const totals = stats.totalsOfMatch(m);
     for (const [pid, total] of Object.entries(totals)) {
+      if (filterPlayerId && pid !== filterPlayerId) continue;
       byGame[m.gameId].entries.push({ matchId: m.id, pid, total, date: m.endedAt || m.startedAt });
     }
   }
