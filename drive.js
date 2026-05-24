@@ -13,7 +13,7 @@
 const DRIVE_FILE_NAME = 'scores-famille-db.json';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive';
 
 let CFG = { clientId: null };
 let tokenClient = null;
