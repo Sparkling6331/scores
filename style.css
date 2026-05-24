@@ -195,6 +195,10 @@ table.stat tbody tr:hover { background: var(--bg); }
 
 .h2h-grid { overflow-x: auto; }
 
+/* Edit round button in rounds table */
+.edit-round-btn { padding: 2px 6px; min-height: 28px; font-size: 13px; background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; opacity: 0.6; }
+.edit-round-btn:hover { opacity: 1; border-color: var(--accent); }
+
 /* History filters */
 .filter-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 
