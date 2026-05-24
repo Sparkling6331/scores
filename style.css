@@ -38,7 +38,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 #topbar {
   position: sticky; top: 0; z-index: 10;
   background: var(--card); border-bottom: 1px solid var(--border);
-  padding: 8px max(12px, env(safe-area-inset-left)) 0;
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
 }
 .topbar-inner {
   display: flex; align-items: center; gap: 12px;
