@@ -644,6 +644,7 @@ function renderMatch(screen) {
   const trh = el('tr');
   trh.appendChild(el('th', {}, 'Tour'));
   for (const pid of m.playerIds) trh.appendChild(el('th', {}, players[pid]?.name || '?'));
+  if (m.status === 'ongoing') trh.appendChild(el('th', {}));
   head.appendChild(trh); table.appendChild(head);
   const tbody = el('tbody');
   const running = {};
@@ -655,6 +656,13 @@ function renderMatch(screen) {
       const sc = r.scores[pid];
       if (sc != null) running[pid] += Number(sc);
       tr.appendChild(el('td', {}, sc == null ? '–' : `${sc} (${running[pid]})`));
+    }
+    if (m.status === 'ongoing') {
+      tr.appendChild(el('td', {},
+        el('button', { class: 'edit-round-btn', title: 'Modifier ce tour',
+          onclick: () => claimLock(m.id, r.n)
+        }, '✏️')
+      ));
     }
     tbody.appendChild(tr);
   }
@@ -676,12 +684,18 @@ function renderMatch(screen) {
     return;
   }
 
-  // Entry area: handle lock for next round
+  // Entry area: editing a past round takes priority over next-round entry
   const nextN = (m.rounds[m.rounds.length - 1]?.n || 0) + 1;
-  renderEntry(v.querySelector('#m-entry'), m, game, nextN, players);
+  const editingRound = m.rounds.find(r => {
+    const lk = state.db.locks?.[m.id]?.[r.n];
+    return lk && lk.deviceId === DEVICE_ID && new Date(lk.expiresAt).getTime() > Date.now();
+  });
+  const entryN = editingRound ? editingRound.n : nextN;
+  const prefill = editingRound ? editingRound.scores : null;
+  renderEntry(v.querySelector('#m-entry'), m, game, entryN, players, prefill);
 }
 
-function renderEntry(host, m, game, n, players) {
+function renderEntry(host, m, game, n, players, prefill = null) {
   host.innerHTML = '';
   const lock = state.db.locks?.[m.id]?.[n];
   const me = drive.getUser().email || DEVICE_ID;
@@ -717,13 +731,15 @@ function renderEntry(host, m, game, n, players) {
   }
 
   // I have the lock — show entry form
+  const isEdit = prefill != null;
   const warnEl = el('div', { class: 'entry-warn', style: 'display:none;' });
   host.appendChild(el('div', { class: 'card' },
-    el('h3', {}, `Tour #${n}`),
+    el('h3', {}, isEdit ? `✏️ Modifier tour #${n}` : `Tour #${n}`),
     ...m.playerIds.map(pid => {
       const row = el('div', { class: 'entry-row' });
       row.appendChild(el('label', {}, players[pid]?.name || '?'));
-      const inp = el('input', { type: 'number', inputmode: 'decimal', step: '1', placeholder: '0', 'data-pid': pid });
+      const preVal = prefill?.[pid] != null ? String(prefill[pid]) : '';
+      const inp = el('input', { type: 'number', inputmode: 'decimal', step: '1', placeholder: '0', 'data-pid': pid, value: preVal });
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') host.querySelector('#submit-round').click(); });
       inp.addEventListener('input', () => { inp.classList.remove('warn-empty'); warnEl.style.display = 'none'; });
       const toggle = el('button', { class: 'sign-toggle', type: 'button', title: 'Inverser le signe', onclick: () => {
@@ -1257,8 +1273,9 @@ function renderHistory(screen) {
   function refresh() {
     content.innerHTML = '';
     const arr = getFiltered();
+    const filteredPlayerId = playerSel.value || null;
     if (currentMode === 'list') renderHistoryList(content, arr, games, players);
-    else if (currentMode === 'tour-records') renderTourRecords(content, arr, games, players);
+    else if (currentMode === 'tour-records') renderTourRecords(content, arr, games, players, filteredPlayerId);
     else if (currentMode === 'match-records') renderMatchRecords(content, arr, games, players);
     else if (currentMode === 'extremes') renderExtremes(content, arr, games, players);
   }
@@ -1276,13 +1293,14 @@ function renderHistoryList(host, arr, games, players) {
   host.appendChild(list);
 }
 
-function renderTourRecords(host, matches, games, players) {
+function renderTourRecords(host, matches, games, players, filterPlayerId = null) {
   const entries = [];
   for (const m of matches) {
     const game = games[m.gameId]; if (!game) continue;
     for (const r of m.rounds) {
       for (const [pid, score] of Object.entries(r.scores)) {
         if (score == null) continue;
+        if (filterPlayerId && pid !== filterPlayerId) continue;
         entries.push({ matchId: m.id, gameName: game.name, pid, score: Number(score), roundN: r.n, date: m.endedAt || m.startedAt });
       }
     }
