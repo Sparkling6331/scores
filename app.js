@@ -679,6 +679,19 @@ function renderMatch(screen) {
     const names = wins.map(p => players[p]?.name).join(' & ');
     wb.appendChild(el('h2', {}, '🏆 ' + (names || '?')));
     wb.appendChild(el('div', {}, wins.length > 1 ? 'Égalité' : 'gagne la partie'));
+    wb.appendChild(el('button', {
+      style: 'margin-top:12px;',
+      onclick: () => {
+        if (!confirm('Rouvrir cette partie pour continuer à jouer ?')) return;
+        m.status = 'ongoing';
+        delete m.endedAt;
+        delete m.winnerIds;
+        // Passe en fin manuelle pour éviter que la condition de fin se retrigger immédiatement
+        m.endOverride = { type: 'manual' };
+        scheduleSave();
+        render();
+      }
+    }, 'Rouvrir la partie'));
     v.querySelector('#m-end-manual').hidden = true;
     v.querySelector('#m-entry').innerHTML = '';
     return;
