@@ -228,3 +228,42 @@ input.warn-empty { border-color: var(--warn) !important; outline: 2px solid var(
 .evo text { fill: var(--muted); font-size: 11px; }
 .evo path { fill: none; stroke-width: 2; }
 .evo .pt { stroke-width: 1; }
+
+/* Screen entrance animation */
+@keyframes screenEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#screen.screen-enter { animation: screenEnter 0.18s ease-out; }
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  left: 50%; transform: translateX(-50%) translateY(12px);
+  background: var(--good); color: #fff; border-radius: 20px;
+  padding: 10px 20px; font-size: 15px; font-weight: 600;
+  opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  z-index: 200; pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Confetti particles */
+#m-winner { position: relative; overflow: hidden; }
+@keyframes confettiFall {
+  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(80px) rotate(720deg); opacity: 0; }
+}
+.confetti-particle {
+  position: absolute; width: 8px; height: 8px; border-radius: 2px;
+  animation: confettiFall 0.9s ease-out forwards;
+  pointer-events: none;
+}
+
+/* Tappable total card (quick round entry) */
+.totals .pl.tappable-total { cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+.totals .pl.tappable-total:hover { border-color: var(--accent); }
+.totals .pl.tappable-total:active { transform: scale(0.95); }
+
+/* Accent color picker */
+input[type="color"] { min-height: unset; width: 28px; height: 28px; padding: 2px; cursor: pointer; border-radius: 6px; }
