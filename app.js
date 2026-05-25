@@ -78,6 +78,53 @@ function syncbar(state_, msg) {
   }
 }
 
+// ---------- Haptic feedback ----------
+function haptic(type = 'light') {
+  if (!navigator.vibrate) return;
+  if (type === 'light') navigator.vibrate(10);
+  else if (type === 'medium') navigator.vibrate(25);
+  else if (type === 'success') navigator.vibrate([10, 50, 10]);
+  else if (type === 'error') navigator.vibrate([50, 30, 50]);
+}
+
+// ---------- Accent color theme ----------
+function applyAccentColor(color) {
+  document.documentElement.style.setProperty('--accent', color);
+  localStorage.setItem('scores.accentColor', color);
+}
+function initAccentColor() {
+  const saved = localStorage.getItem('scores.accentColor');
+  if (saved) document.documentElement.style.setProperty('--accent', saved);
+}
+
+// ---------- Toast notification ----------
+function showToast(msg, duration = 1800) {
+  const toast = el('div', { class: 'toast' }, msg);
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => { void toast.offsetWidth; toast.classList.add('show'); });
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// ---------- Confetti burst ----------
+const _celebratedMatches = new Set();
+function burstConfetti(container) {
+  const colors = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2'];
+  for (let i = 0; i < 28; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-particle';
+    p.style.left = (Math.random() * 100) + '%';
+    p.style.top = (Math.random() * 30) + '%';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDelay = (Math.random() * 0.4) + 's';
+    p.style.animationDuration = (0.6 + Math.random() * 0.5) + 's';
+    container.appendChild(p);
+  }
+  setTimeout(() => container.querySelectorAll('.confetti-particle').forEach(p => p.remove()), 1800);
+}
+
 // ---------- DB merge (conflict resolution) ----------
 function mergeDbs(local, remote) {
   // Union players by id (newer name wins by updatedAt tiebreak if present, else local)
@@ -173,6 +220,7 @@ async function doSave() {
 init();
 
 async function init() {
+  initAccentColor();
   if (!state.configuredClientId) {
     return renderWelcome({ needsClientId: true });
   }
@@ -294,6 +342,13 @@ function renderTopbar() {
       onclick: () => { drive.signOut(); location.reload(); }
     }, 'Déconnexion'));
   }
+  ub.appendChild(el('input', {
+    type: 'color',
+    value: localStorage.getItem('scores.accentColor') || '#2563eb',
+    title: 'Thème',
+    style: 'flex-shrink:0;',
+    oninput: (e) => { applyAccentColor(e.target.value); haptic('light'); },
+  }));
   const tabs = $('#tabs');
   tabs.innerHTML = '';
   for (const [id, label] of [
@@ -326,6 +381,9 @@ function render() {
   if (!state.db) return;
   const s = $('#screen');
   s.innerHTML = '';
+  s.classList.remove('screen-enter');
+  void s.offsetWidth;
+  s.classList.add('screen-enter');
   switch (state.currentScreen) {
     case 'home': return renderHome(s);
     case 'newMatch': return renderNewMatch(s);
@@ -464,6 +522,7 @@ function renderNewMatch(screen) {
   };
   for (const p of state.db.players) {
     const c = el('span', { class: 'chip', onclick: () => {
+      haptic('light');
       const i = state.newMatch.playerIds.indexOf(p.id);
       if (i >= 0) state.newMatch.playerIds.splice(i, 1);
       else state.newMatch.playerIds.push(p.id);
@@ -476,7 +535,7 @@ function renderNewMatch(screen) {
   updatePlayerCountHint();
   v.querySelector('#nm-cancel').onclick = () => goto('home');
   v.querySelector('#nm-start').onclick = () => {
-    if (state.newMatch.playerIds.length < 2) return alert('Sélectionne au moins 2 joueurs.');
+    if (state.newMatch.playerIds.length < 2) { haptic('error'); return alert('Sélectionne au moins 2 joueurs.'); }
     if (!state.newMatch.gameId) return alert('Choisis un jeu.');
     const game = state.db.games.find(g => g.id === state.newMatch.gameId);
     const m = {
@@ -617,6 +676,15 @@ function renderMatch(screen) {
   }, '🗑');
   actions.insertBefore(delBtn, actions.firstChild);
 
+  // Compute entry state early — needed for totals tap-to-enter
+  const nextN = (m.rounds[m.rounds.length - 1]?.n || 0) + 1;
+  const editingRound = m.rounds.find(r => {
+    const lk = state.db.locks?.[m.id]?.[r.n];
+    return lk && lk.deviceId === DEVICE_ID && new Date(lk.expiresAt).getTime() > Date.now();
+  });
+  const entryN = editingRound ? editingRound.n : nextN;
+  const prefill = editingRound ? editingRound.scores : null;
+
   // Totals
   const totals = stats.totalsOfMatch(m);
   const rule = endRuleOfMatch(m, game);
@@ -634,6 +702,18 @@ function renderMatch(screen) {
     );
     if (totals[pid] != null && totals[pid] === leader) d.classList.add('lead');
     if (rule.type === 'threshold' && t >= rule.value) d.classList.add('threshold-reached');
+    if (m.status === 'ongoing' && !editingRound) {
+      d.classList.add('tappable-total');
+      d.title = `Saisir tour #${nextN}`;
+      d.addEventListener('click', () => {
+        const existing = state.db.locks?.[m.id]?.[nextN];
+        if (existing && existing.deviceId !== DEVICE_ID && new Date(existing.expiresAt).getTime() > Date.now()) {
+          render(); return;
+        }
+        haptic('light');
+        claimLock(m.id, nextN);
+      });
+    }
     totalsEl.appendChild(d);
   }
 
@@ -694,17 +774,15 @@ function renderMatch(screen) {
     }, 'Rouvrir la partie'));
     v.querySelector('#m-end-manual').hidden = true;
     v.querySelector('#m-entry').innerHTML = '';
+    if (!_celebratedMatches.has(m.id)) {
+      _celebratedMatches.add(m.id);
+      haptic('success');
+      setTimeout(() => burstConfetti(wb), 150);
+    }
     return;
   }
 
   // Entry area: editing a past round takes priority over next-round entry
-  const nextN = (m.rounds[m.rounds.length - 1]?.n || 0) + 1;
-  const editingRound = m.rounds.find(r => {
-    const lk = state.db.locks?.[m.id]?.[r.n];
-    return lk && lk.deviceId === DEVICE_ID && new Date(lk.expiresAt).getTime() > Date.now();
-  });
-  const entryN = editingRound ? editingRound.n : nextN;
-  const prefill = editingRound ? editingRound.scores : null;
   renderEntry(v.querySelector('#m-entry'), m, game, entryN, players, prefill);
 }
 
@@ -814,10 +892,13 @@ function submitRound(matchId, n, host) {
   m.rounds.sort((a, b) => a.n - b.n);
   releaseLock(matchId, n);
   scheduleSave();
+  haptic('success');
+  showToast(`✅ Tour #${n} enregistré !`);
   render();
 }
 
 function claimLock(matchId, n) {
+  haptic('light');
   state.db.locks = state.db.locks || {};
   state.db.locks[matchId] = state.db.locks[matchId] || {};
   state.db.locks[matchId][n] = {
