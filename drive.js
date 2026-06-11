@@ -91,24 +91,41 @@ async function fetchUserInfo() {
 }
 
 let originalCallback = null;
+const FETCH_TIMEOUT_MS = 20000;
+
+// fetch avec timeout via AbortController
+function fetchWithTimeout(url, opts) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(timer));
+}
+
 async function driveFetch(url, opts = {}) {
   opts.headers = Object.assign({}, opts.headers, {
     Authorization: 'Bearer ' + accessToken,
   });
-  let r = await fetch(url, opts);
+  let r = await fetchWithTimeout(url, opts);
   if (r.status === 401) {
     // token expired; refresh silently while preserving original callback
     status('warn', 'Renouvellement du token…');
     if (!originalCallback) originalCallback = tokenClient.callback;
     await new Promise((resolve, reject) => {
-      tokenClient.callback = (resp) => {
+      // Timeout sur le refresh OAuth : si aucun callback en 15s, on rejette
+      const refreshTimer = setTimeout(() => {
         tokenClient.callback = originalCallback;
+        originalCallback = null;
+        reject(new Error('Token refresh timeout'));
+      }, 15000);
+      tokenClient.callback = (resp) => {
+        clearTimeout(refreshTimer);
+        tokenClient.callback = originalCallback;
+        originalCallback = null;
         if (resp.error) reject(resp); else { accessToken = resp.access_token; resolve(); }
       };
       tokenClient.requestAccessToken({ prompt: '' });
     });
     opts.headers.Authorization = 'Bearer ' + accessToken;
-    r = await fetch(url, opts);
+    r = await fetchWithTimeout(url, opts);
   }
   return r;
 }
