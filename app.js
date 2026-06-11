@@ -417,9 +417,6 @@ function render() {
   if (!state.db) return;
   const s = $('#screen');
   s.innerHTML = '';
-  s.classList.remove('screen-enter');
-  void s.offsetWidth;
-  s.classList.add('screen-enter');
   try {
     switch (state.currentScreen) {
       case 'home': return renderHome(s);
@@ -439,6 +436,8 @@ function render() {
       el('button', { class: 'primary', onclick: () => goto('home') }, 'Retour à l\'accueil')
     ));
   }
+  // Anime le premier enfant du screen (élément fraîchement créé → pas besoin de reflow)
+  if (s.firstElementChild) s.firstElementChild.classList.add('screen-enter');
 }
 
 // ---------- Home ----------

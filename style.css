@@ -63,12 +63,11 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 small { color: var(--muted); }
 label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 
-/* ---------- Topbar (frosted glass) ---------- */
+/* ---------- Topbar ---------- */
 #topbar {
   position: sticky; top: 0; z-index: 40;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
+  /* Pas de backdrop-filter : freeze GPU compositor sur iOS beta */
+  background: var(--card);
   border-bottom: 1px solid var(--border);
   padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
 }
@@ -367,7 +366,8 @@ input.warn-empty { border-color: var(--warn) !important; outline: 2px solid var(
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-#screen.screen-enter { animation: screenEnter 0.22s cubic-bezier(0.2, 0.8, 0.3, 1); }
+/* Appliqué sur le premier enfant, pas sur #screen — évite void offsetWidth */
+.screen-enter { animation: screenEnter 0.22s cubic-bezier(0.2, 0.8, 0.3, 1); }
 
 /* Toast */
 .toast {
