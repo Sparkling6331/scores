@@ -13,8 +13,8 @@
   --muted: #64748b;
   --accent: #4f46e5;
   --accent-fg: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
-  --accent-glow: color-mix(in srgb, var(--accent) 35%, transparent);
+  --accent-soft: rgba(79, 70, 229, 0.10);
+  --accent-glow: rgba(79, 70, 229, 0.35);
   --good: #16a34a;
   --good-soft: rgba(22, 163, 74, 0.1);
   --bad: #dc2626;
@@ -161,8 +161,7 @@ button:hover { border-color: var(--accent); }
 button:active { transform: scale(0.97); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary {
-  background: var(--accent); /* fallback si color-mix non supporté */
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  background: var(--accent);
   color: var(--accent-fg); border: none;
   box-shadow: 0 2px 10px var(--accent-glow);
 }
