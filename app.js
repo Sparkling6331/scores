@@ -200,6 +200,13 @@ function scheduleSave() {
 async function doSave() {
   if (state.saving) { state.saveQueued = true; return; }
   state.saving = true;
+  // Filet de sécurité : si le réseau ne répond pas en 30s, on débloque l'app
+  const safetyTimer = setTimeout(() => {
+    if (!state.saving) return;
+    state.saving = false;
+    syncbar('error', '');
+    if (state.saveQueued) { state.saveQueued = false; scheduleSave(); }
+  }, 30000);
   syncbar('warn', 'Sync…');
   try {
     state.db.updatedAt = new Date().toISOString();
@@ -219,9 +226,10 @@ async function doSave() {
       } else throw e;
     }
   } catch (e) {
-    syncbar('error', 'Erreur sync: ' + e.message);
-    console.error(e);
+    syncbar('error', '');
+    console.error('[doSave]', e);
   } finally {
+    clearTimeout(safetyTimer);
     state.saving = false;
     if (state.saveQueued) { state.saveQueued = false; scheduleSave(); }
   }
