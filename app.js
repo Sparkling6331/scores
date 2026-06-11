@@ -88,13 +88,24 @@ function haptic(type = 'light') {
 }
 
 // ---------- Accent color theme ----------
+function _hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
 function applyAccentColor(color) {
-  document.documentElement.style.setProperty('--accent', color);
+  const root = document.documentElement;
+  root.style.setProperty('--accent', color);
+  try {
+    const [r, g, b] = _hexToRgb(color);
+    root.style.setProperty('--accent-soft', `rgba(${r},${g},${b},0.10)`);
+    root.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.35)`);
+  } catch (e) { /* ignore — fallback values from CSS are fine */ }
   localStorage.setItem('scores.accentColor', color);
 }
 function initAccentColor() {
   const saved = localStorage.getItem('scores.accentColor');
-  if (saved) document.documentElement.style.setProperty('--accent', saved);
+  if (saved) applyAccentColor(saved);
 }
 
 // ---------- Toast notification ----------
@@ -401,14 +412,24 @@ function render() {
   s.classList.remove('screen-enter');
   void s.offsetWidth;
   s.classList.add('screen-enter');
-  switch (state.currentScreen) {
-    case 'home': return renderHome(s);
-    case 'newMatch': return renderNewMatch(s);
-    case 'match': return renderMatch(s);
-    case 'players': return renderPlayers(s);
-    case 'games': return renderGames(s);
-    case 'stats': return renderStats(s);
-    case 'history': return renderHistory(s);
+  try {
+    switch (state.currentScreen) {
+      case 'home': return renderHome(s);
+      case 'newMatch': return renderNewMatch(s);
+      case 'match': return renderMatch(s);
+      case 'players': return renderPlayers(s);
+      case 'games': return renderGames(s);
+      case 'stats': return renderStats(s);
+      case 'history': return renderHistory(s);
+    }
+  } catch (e) {
+    console.error('[render]', e);
+    s.innerHTML = '';
+    s.appendChild(el('div', { class: 'card', style: 'margin:20px;' },
+      el('p', { style: 'color:var(--bad); font-weight:700;' }, '⚠️ Erreur d\'affichage'),
+      el('p', { style: 'color:var(--muted); font-size:14px;' }, e.message || String(e)),
+      el('button', { class: 'primary', onclick: () => goto('home') }, 'Retour à l\'accueil')
+    ));
   }
 }
 
@@ -671,6 +692,7 @@ function renderMatch(screen) {
   const m = state.db.matches.find(x => x.id === state.currentMatchId);
   if (!m) { goto('home'); return; }
   const game = state.db.games.find(g => g.id === m.gameId);
+  if (!game) { goto('home'); return; }
   const players = Object.fromEntries(state.db.players.map(p => [p.id, p]));
 
   const v = tpl('tpl-match');
