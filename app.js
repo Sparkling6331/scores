@@ -242,6 +242,8 @@ async function renderWelcome({ needsClientId, needsAuth }) {
   screen.innerHTML = '';
   $('#tabs').innerHTML = '';
   $('#userbox').innerHTML = '';
+  const bar = $('#tabbar');
+  if (bar) bar.hidden = true;
   const v = tpl('tpl-welcome');
   screen.appendChild(v);
   v.querySelector('#cfg-client-id').value = state.configuredClientId;
@@ -344,23 +346,38 @@ function renderTopbar() {
   }
   ub.appendChild(el('input', {
     type: 'color',
-    value: localStorage.getItem('scores.accentColor') || '#2563eb',
+    value: localStorage.getItem('scores.accentColor') || '#4f46e5',
     title: 'Thème',
     style: 'flex-shrink:0;',
     oninput: (e) => { applyAccentColor(e.target.value); haptic('light'); },
   }));
+  const NAV = [
+    ['home', 'Parties', '🎲'],
+    ['players', 'Joueurs', '👥'],
+    ['games', 'Jeux', '🃏'],
+    ['stats', 'Stats', '📊'],
+    ['history', 'Historique', '📜'],
+  ];
   const tabs = $('#tabs');
   tabs.innerHTML = '';
-  for (const [id, label] of [
-    ['home', 'Parties'],
-    ['players', 'Joueurs'],
-    ['games', 'Jeux'],
-    ['stats', 'Stats'],
-    ['history', 'Historique'],
-  ]) {
+  for (const [id, label] of NAV) {
     const b = el('button', { onclick: () => goto(id) }, label);
     if (id === state.currentScreen) b.classList.add('active');
     tabs.appendChild(b);
+  }
+  // Bottom tab bar (mobile, app-native)
+  const bar = $('#tabbar');
+  if (bar) {
+    bar.innerHTML = '';
+    bar.hidden = false;
+    for (const [id, label, ico] of NAV) {
+      const b = el('button', { onclick: () => { haptic('light'); goto(id); } },
+        el('span', { class: 'ico' }, ico),
+        el('span', { class: 'lbl' }, label)
+      );
+      if (id === state.currentScreen) b.classList.add('active');
+      bar.appendChild(b);
+    }
   }
 }
 
@@ -437,9 +454,10 @@ function matchCard(m, games, players, opts = {}) {
   const totals = stats.totalsOfMatch(m);
   const winners = m.status === 'finished' ? stats.winnersOfMatch(m, g) : [];
   const c = el('div', { class: 'match-card', onclick: () => goto('match', { matchId: m.id }) });
-  const right = el('div', { style: 'display:flex; align-items:center; gap:8px;' },
-    el('span', { class: 'meta' }, m.status === 'finished' ? fmtDate(m.endedAt || m.startedAt) : 'En cours')
-  );
+  const metaSpan = m.status === 'finished'
+    ? el('span', { class: 'meta' }, fmtDate(m.endedAt || m.startedAt))
+    : el('span', { class: 'meta live' }, el('span', { class: 'live-dot' }), 'En cours');
+  const right = el('div', { style: 'display:flex; align-items:center; gap:8px;' }, metaSpan);
   if (opts.deletable !== false) {
     right.appendChild(el('button', {
       class: 'danger',
@@ -696,12 +714,17 @@ function renderMatch(screen) {
   const totalsEl = v.querySelector('#m-totals');
   for (const pid of m.playerIds) {
     const t = totals[pid] ?? 0;
+    const isLead = totals[pid] != null && totals[pid] === leader && m.rounds.length > 0;
     const d = el('div', { class: 'pl' },
-      el('div', { class: 'nm' }, players[pid]?.name || '?'),
+      el('div', { class: 'nm' }, (isLead ? '👑 ' : '') + (players[pid]?.name || '?')),
       el('div', { class: 'tot' }, String(t))
     );
-    if (totals[pid] != null && totals[pid] === leader) d.classList.add('lead');
+    if (isLead) d.classList.add('lead');
     if (rule.type === 'threshold' && t >= rule.value) d.classList.add('threshold-reached');
+    if (rule.type === 'threshold' && rule.value > 0) {
+      const pct = Math.max(0, Math.min(100, (t / rule.value) * 100));
+      d.appendChild(el('div', { class: 'prog' }, el('i', { style: `width:${pct}%` })));
+    }
     if (m.status === 'ongoing' && !editingRound) {
       d.classList.add('tappable-total');
       d.title = `Saisir tour #${nextN}`;
