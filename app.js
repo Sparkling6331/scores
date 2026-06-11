@@ -112,7 +112,8 @@ function initAccentColor() {
 function showToast(msg, duration = 1800) {
   const toast = el('div', { class: 'toast' }, msg);
   document.body.appendChild(toast);
-  requestAnimationFrame(() => { void toast.offsetWidth; toast.classList.add('show'); });
+  // Double rAF : pas de forced layout (même correctif que render())
+  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('show')));
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
@@ -906,8 +907,11 @@ function renderEntry(host, m, game, n, players, prefill = null) {
       }, 'Valider tour')
     )
   ));
-  // Auto-focus first input
-  setTimeout(() => { host.querySelector('input')?.focus(); }, 50);
+  // Auto-focus first input — désactivé en mode PWA standalone iOS (focus déclenche le clavier
+  // qui resize le viewport au mauvais moment et peut freezer le compositeur GPU)
+  if (!window.navigator.standalone) {
+    setTimeout(() => { host.querySelector('input')?.focus(); }, 50);
+  }
 }
 
 function submitRound(matchId, n, host) {
@@ -945,6 +949,10 @@ function submitRound(matchId, n, host) {
   releaseLock(matchId, n);
   scheduleSave();
   haptic('success');
+  // Ferme le clavier avant de reconstruire le DOM — évite un resize de viewport iOS en plein render
+  if (document.activeElement && document.activeElement !== document.body) {
+    document.activeElement.blur();
+  }
   showToast(`✅ Tour #${n} enregistré !`);
   render();
 }
