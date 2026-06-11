@@ -1,4 +1,4 @@
-const CACHE = 'scores-v2';
+const CACHE = 'scores-v3';
 const STATIC = [
   './icon-192.png',
   './icon-512.png',
