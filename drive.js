@@ -93,29 +93,34 @@ async function fetchUserInfo() {
 let originalCallback = null;
 const FETCH_TIMEOUT_MS = 20000;
 
-// fetch avec timeout via AbortController
-function fetchWithTimeout(url, opts) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(timer));
-}
+// AbortSignal.timeout() est natif au navigateur et n'est pas throttlé par iOS
+// contrairement à setTimeout(). AbortSignal.any() combine plusieurs signaux.
+async function driveFetch(url, opts = {}, externalSignal) {
+  const makeSignal = () => externalSignal
+    ? AbortSignal.any([AbortSignal.timeout(FETCH_TIMEOUT_MS), externalSignal])
+    : AbortSignal.timeout(FETCH_TIMEOUT_MS);
 
-async function driveFetch(url, opts = {}) {
-  opts.headers = Object.assign({}, opts.headers, {
-    Authorization: 'Bearer ' + accessToken,
-  });
-  let r = await fetchWithTimeout(url, opts);
+  const hdrs = { ...opts.headers, Authorization: 'Bearer ' + accessToken };
+  let r = await fetch(url, { ...opts, headers: hdrs, signal: makeSignal() });
+
   if (r.status === 401) {
-    // token expired; refresh silently while preserving original callback
     status('warn', 'Renouvellement du token…');
     if (!originalCallback) originalCallback = tokenClient.callback;
     await new Promise((resolve, reject) => {
-      // Timeout sur le refresh OAuth : si aucun callback en 15s, on rejette
       const refreshTimer = setTimeout(() => {
         tokenClient.callback = originalCallback;
         originalCallback = null;
         reject(new Error('Token refresh timeout'));
       }, 15000);
+      // Si le signal externe est annulé pendant le refresh OAuth, on rejette aussi
+      if (externalSignal) {
+        externalSignal.addEventListener('abort', () => {
+          clearTimeout(refreshTimer);
+          tokenClient.callback = originalCallback;
+          originalCallback = null;
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      }
       tokenClient.callback = (resp) => {
         clearTimeout(refreshTimer);
         tokenClient.callback = originalCallback;
@@ -124,8 +129,8 @@ async function driveFetch(url, opts = {}) {
       };
       tokenClient.requestAccessToken({ prompt: '' });
     });
-    opts.headers.Authorization = 'Bearer ' + accessToken;
-    r = await fetchWithTimeout(url, opts);
+    hdrs.Authorization = 'Bearer ' + accessToken;
+    r = await fetch(url, { ...opts, headers: hdrs, signal: makeSignal() });
   }
   return r;
 }
@@ -190,12 +195,12 @@ export function cachedFileId() {
   return localStorage.getItem('scores.fileId') || null;
 }
 
-export async function loadDb() {
+export async function loadDb(externalSignal) {
   if (!fileId) throw new Error('Pas de fileId');
   // Get content + revision in one go: download via alt=media, revision via separate metadata call.
   const [contentR, metaR] = await Promise.all([
-    driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`),
-    driveFetch(`${DRIVE_API}/files/${fileId}?fields=headRevisionId,modifiedTime`),
+    driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`, {}, externalSignal),
+    driveFetch(`${DRIVE_API}/files/${fileId}?fields=headRevisionId,modifiedTime`, {}, externalSignal),
   ]);
   if (!contentR.ok) throw new Error('Drive load content: ' + contentR.status);
   if (!metaR.ok) throw new Error('Drive load meta: ' + metaR.status);
@@ -210,13 +215,11 @@ export async function loadDb() {
 // Save db. If serverDb provided (from a recent load with same revision),
 // we'll attempt to overwrite. Otherwise we refetch first to get current revision.
 // On conflict, the caller must re-merge and retry.
-export async function saveDb(db, expectedRevisionId) {
+export async function saveDb(db, expectedRevisionId, externalSignal) {
   if (!fileId) throw new Error('Pas de fileId');
   const body = JSON.stringify(db);
-  // We cannot use If-Match on Drive content-PATCH directly across all clients,
-  // but we can detect conflicts by re-checking revisionId before write.
   if (expectedRevisionId) {
-    const r0 = await driveFetch(`${DRIVE_API}/files/${fileId}?fields=headRevisionId`);
+    const r0 = await driveFetch(`${DRIVE_API}/files/${fileId}?fields=headRevisionId`, {}, externalSignal);
     if (r0.ok) {
       const m = await r0.json();
       if (m.headRevisionId !== expectedRevisionId) {
@@ -229,11 +232,8 @@ export async function saveDb(db, expectedRevisionId) {
   }
   const r = await driveFetch(
     `${UPLOAD_API}/files/${fileId}?uploadType=media&fields=id,headRevisionId`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    }
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body },
+    externalSignal
   );
   if (!r.ok) throw new Error('Drive save: ' + r.status + ' ' + (await r.text()));
   const j = await r.json();

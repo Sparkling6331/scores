@@ -393,9 +393,11 @@ input.warn-empty { border-color: var(--warn) !important; outline: 2px solid var(
 }
 .confetti-particle {
   position: absolute; width: 8px; height: 8px; border-radius: 2px;
-  -webkit-animation: confettiFall 0.9s ease-out forwards;
-  animation: confettiFall 0.9s ease-out forwards;
-  pointer-events: none; will-change: transform;
+  -webkit-animation: confettiFall 0.5s ease-out forwards;
+  animation: confettiFall 0.5s ease-out forwards;
+  pointer-events: none;
+  /* Pas de will-change:transform — pré-allouer 28 couches GPU simultanées
+     freezait le compositor thread iOS 27 beta */
 }
 
 /* Accessibilité : respecter la préférence réduction de mouvement */

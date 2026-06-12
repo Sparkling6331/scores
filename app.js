@@ -122,18 +122,20 @@ function showToast(msg, duration = 1800) {
 // ---------- Confetti burst ----------
 const _celebratedMatches = new Set();
 function burstConfetti(container) {
+  // 8 particules au lieu de 28 — chaque particule crée une couche GPU compositor ;
+  // 28 couches simultanées freezaient le compositor thread sur iOS 27 beta.
   const colors = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2'];
-  for (let i = 0; i < 28; i++) {
+  for (let i = 0; i < 8; i++) {
     const p = document.createElement('div');
     p.className = 'confetti-particle';
-    p.style.left = (Math.random() * 100) + '%';
-    p.style.top = (Math.random() * 30) + '%';
+    p.style.left = (10 + Math.random() * 80) + '%';
+    p.style.top = (Math.random() * 20) + '%';
     p.style.background = colors[i % colors.length];
-    p.style.animationDelay = (Math.random() * 0.4) + 's';
-    p.style.animationDuration = (0.6 + Math.random() * 0.5) + 's';
+    p.style.animationDelay = (Math.random() * 0.25) + 's';
+    p.style.animationDuration = (0.4 + Math.random() * 0.25) + 's';
     container.appendChild(p);
   }
-  setTimeout(() => container.querySelectorAll('.confetti-particle').forEach(p => p.remove()), 1800);
+  setTimeout(() => container.querySelectorAll('.confetti-particle').forEach(p => p.remove()), 900);
 }
 
 // ---------- DB merge (conflict resolution) ----------
@@ -200,27 +202,26 @@ function scheduleSave() {
 async function doSave() {
   if (state.saving) { state.saveQueued = true; return; }
   state.saving = true;
-  // Filet de sécurité : si le réseau ne répond pas en 30s, on débloque l'app
+  // AbortController : ac.abort() annule réellement le fetch en cours (contrairement à l'ancien
+  // pattern où on resetait juste state.saving pendant qu'un fetch pouvait encore tourner).
+  // Évite la race condition de deux doSave() simultanés après un safety timeout.
+  const ac = new AbortController();
   const safetyTimer = setTimeout(() => {
-    if (!state.saving) return;
-    state.saving = false;
-    syncbar('error', '');
-    if (state.saveQueued) { state.saveQueued = false; scheduleSave(); }
-  }, 30000);
+    if (state.saving) ac.abort(); // AbortError → catch → finally → state.saving = false
+  }, 15000);
   syncbar('warn', 'Sync…');
   try {
     state.db.updatedAt = new Date().toISOString();
     state.db.version = (state.db.version || 0) + 1;
     try {
-      state.revisionId = await drive.saveDb(state.db, state.revisionId);
+      state.revisionId = await drive.saveDb(state.db, state.revisionId, ac.signal);
       syncbar('ok', 'Synchronisé');
     } catch (e) {
       if (e.code === 'CONFLICT') {
-        // refetch + merge + retry
-        const { db: remote, revisionId } = await drive.loadDb();
+        const { db: remote, revisionId } = await drive.loadDb(ac.signal);
         state.db = mergeDbs(state.db, remote);
         state.revisionId = revisionId;
-        state.revisionId = await drive.saveDb(state.db, state.revisionId);
+        state.revisionId = await drive.saveDb(state.db, state.revisionId, ac.signal);
         syncbar('ok', 'Synchronisé (fusion)');
         render();
       } else throw e;
