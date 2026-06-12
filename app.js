@@ -121,10 +121,15 @@ function showToast(msg, duration = 1800) {
 }
 
 // ---------- Confetti burst ----------
+// iPadOS se présente comme "MacIntel" avec écran tactile, d'où le second test
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const _celebratedMatches = new Set();
 function burstConfetti(container) {
-  // 8 particules au lieu de 28 — chaque particule crée une couche GPU compositor ;
-  // 28 couches simultanées freezaient le compositor thread sur iOS 27 beta.
+  // Désactivé sur iOS : même 8 particules animées dans un conteneur à gradient
+  // peuvent freezer le compositor GPU de WebKit iOS 27 beta au moment où la
+  // bannière gagnant apparaît. La bannière reste, seuls les confettis sautent.
+  if (IS_IOS) return;
   const colors = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2'];
   for (let i = 0; i < 8; i++) {
     const p = document.createElement('div');
