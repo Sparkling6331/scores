@@ -71,6 +71,13 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); 
   border-bottom: 1px solid var(--border);
   padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
 }
+/* En PWA standalone, la barre d'état iOS recouvre le contenu (black-translucent).
+   Sur iPad, env(safe-area-inset-top) renvoie 0 (bug iPadOS) → fallback 24px minimum. */
+@media (display-mode: standalone) {
+  #topbar {
+    padding-top: max(24px, env(safe-area-inset-top));
+  }
+}
 .topbar-inner {
   display: flex; align-items: center; gap: 12px;
   max-width: 980px; margin: 0 auto;
