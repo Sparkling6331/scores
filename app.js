@@ -309,7 +309,7 @@ async function afterSignIn(welcomeEl) {
       await drive.setFileId(fid);
       const { db, revisionId } = await drive.loadDb();
       state.db = db; state.revisionId = revisionId;
-      drive.startPoll(10000);
+      drive.startPoll(30000);
       return goto('home');
     } catch (e) {
       console.warn('Impossible de charger le fichier en cache:', e);
@@ -323,7 +323,7 @@ async function afterSignIn(welcomeEl) {
     await drive.setFileId(found[0].id);
     const { db, revisionId } = await drive.loadDb();
     state.db = db; state.revisionId = revisionId;
-    drive.startPoll(10000);
+    drive.startPoll(30000);
     return goto('home');
   }
   // Otherwise show setup actions
@@ -334,7 +334,7 @@ async function afterSignIn(welcomeEl) {
       const db = emptyDb();
       await drive.createDbFile(db);
       state.db = db; state.revisionId = drive.getCachedRevision();
-      drive.startPoll(10000);
+      drive.startPoll(30000);
       goto('home');
     };
     welcomeEl.querySelector('#btn-create-db-seed').onclick = async () => {
@@ -342,7 +342,7 @@ async function afterSignIn(welcomeEl) {
         const seed = await fetch('./seed.json').then(r => r.json());
         await drive.createDbFile(seed);
         state.db = seed; state.revisionId = drive.getCachedRevision();
-        drive.startPoll(10000);
+        drive.startPoll(30000);
         goto('home');
       } catch (e) { alert('Import seed échoué: ' + e.message); }
     };
@@ -352,7 +352,7 @@ async function afterSignIn(welcomeEl) {
         await drive.setFileId(f.id);
         const { db, revisionId } = await drive.loadDb();
         state.db = db; state.revisionId = revisionId;
-        drive.startPoll(10000);
+        drive.startPoll(30000);
         goto('home');
       } catch (e) { alert('Sélection annulée ou échouée: ' + e.message); }
     };
@@ -411,7 +411,8 @@ function goto(screen, opts = {}) {
   // Cleanup when leaving match screen
   if (state.currentScreen === 'match' && screen !== 'match') {
     clearLockRefresh();
-    try { drive.setPollInterval(10000); } catch (e) {}
+    // Hors match : poll toutes les 30s (assez pour détecter une partie démarrée par quelqu'un d'autre)
+    try { drive.setPollInterval(30000); } catch (e) {}
   }
   state.currentScreen = screen;
   if (opts.matchId !== undefined) state.currentMatchId = opts.matchId;
@@ -716,7 +717,7 @@ function renderMatch(screen) {
   const metaEl = v.querySelector('#m-meta');
   renderMatchMeta(metaEl, m, players);
 
-  v.querySelector('#m-back').onclick = () => { clearLockRefresh(); drive.setPollInterval(10000); goto('home'); };
+  v.querySelector('#m-back').onclick = () => { clearLockRefresh(); goto('home'); };
   if (m.status === 'ongoing') {
     const btn = v.querySelector('#m-end-manual');
     btn.hidden = false;
